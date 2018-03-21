@@ -99,6 +99,7 @@ EOS
       dir_map = JSON.parse(File.read(@options[:dump_json]))
 
       @logger.info("Connecting to #{@options[:server]}...")
+      vcenter = nil # So we can close it later in an ensure block
       vcenter = RbVmomi::VIM.connect(host: @options[:server],
                                      user: @options[:user],
                                      password: @options[:password],
@@ -162,6 +163,8 @@ EOS
           end
         end
       end
+    ensure
+      vcenter.close unless vcenter.nil?
     end
   end
 end
