@@ -136,6 +136,13 @@ EOS
         @logger.info("Checking #{vms.length} VMs in #{dir_name}...")
 
         vms.each do |vm_info|
+          # Handle older output format which just an Array[String] of UUIDs
+          # instead of a hash of VM info.
+          if vm_info.is_a?(String)
+            vm_info = {'name' => '<unknown>',
+                       'uuid' => vm_info}
+          end
+
           vm_uuid = vm_info['uuid']
           # Directory used doesn't matter, findByUuid has a global search
           # scope.
