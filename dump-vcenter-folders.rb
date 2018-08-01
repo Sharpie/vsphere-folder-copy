@@ -145,8 +145,16 @@ EOS
         dir.children.each do |child|
           case child
           when RbVmomi::VIM::VirtualMachine
+            config = child.config
+
+            # VM destroyed while we were processing it.
+            if config.nil?
+              @logger.debug { "VM disappeared while reading configuration: #{[path, child.name].join('/')}" }
+              next
+            end
+
             dir_map[path] << {name: child.name,
-                              uuid: child.config.uuid}
+                              uuid: config.uuid}
           when RbVmomi::VIM::Folder
             dir_mapper.call([path, child.name].join('/'),
                             dir_map,
