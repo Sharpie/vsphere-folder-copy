@@ -99,6 +99,30 @@ EOS
     end
 
     def run
+      begin
+        restore_vcenter
+
+        return 0
+      rescue => e
+        err_msg = "#{e.class}: #{e.message}"
+        unless e.backtrace.nil?
+          if @logger.debug?
+            # Print all backtrace lines.
+            err_msg += ("\n\t" + e.backtrace.join("\n\t"))
+          else
+            # Print the first backtrace line belonging to this script.
+            err_msg += ("\n\t" + e.backtrace.find {|l| l.start_with?($PROGRAM_NAME)})
+          end
+        end
+
+        @logger.error(err_msg)
+        return 1
+      end
+    end
+
+    private
+
+    def restore_vcenter
       @logger.info("Reading VM Folder layout from #{@options[:dump_json]}...")
       dir_map = JSON.parse(File.read(@options[:dump_json]))
 
@@ -176,10 +200,5 @@ end
 
 # CLI Entrypoint
 if File.expand_path(__FILE__) == File.expand_path($PROGRAM_NAME)
-  begin
-    RestoreVcenterFolders::CLI.new(ARGV).run
-  rescue => e
-    $stderr.puts("ERROR #{e.class}: #{e.message}")
-    exit 1
-  end
+  exit RestoreVcenterFolders::CLI.new(ARGV).run
 end

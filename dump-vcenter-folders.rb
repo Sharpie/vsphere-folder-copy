@@ -81,6 +81,30 @@ EOS
     end
 
     def run
+      begin
+        dump_vcenter
+
+        return 0
+      rescue => e
+        err_msg = "#{e.class}: #{e.message}"
+        unless e.backtrace.nil?
+          if @logger.debug?
+            # Print all backtrace lines.
+            err_msg += ("\n\t" + e.backtrace.join("\n\t"))
+          else
+            # Print the first backtrace line belonging to this script.
+            err_msg += ("\n\t" + e.backtrace.find {|l| l.start_with?($PROGRAM_NAME)})
+          end
+        end
+
+        @logger.error(err_msg)
+        return 1
+      end
+    end
+
+    private
+
+    def dump_vcenter
       @logger.info("Connecting to #{@options[:server]}...")
       vcenter = nil # So we can close it later in an ensure block
       vcenter = RbVmomi::VIM.connect(host: @options[:server],
@@ -149,10 +173,5 @@ end
 
 # CLI Entrypoint
 if File.expand_path(__FILE__) == File.expand_path($PROGRAM_NAME)
-  begin
-    DumpVcenterFolders::CLI.new(ARGV).run
-  rescue => e
-    $stderr.puts("ERROR #{e.class}: #{e.message}")
-    exit 1
-  end
+  exit DumpVcenterFolders::CLI.new(ARGV).run
 end
