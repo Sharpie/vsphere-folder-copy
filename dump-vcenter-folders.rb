@@ -52,6 +52,10 @@ EOS
           exit 0
         end
 
+        parser.on_tail('--debug', 'Set log level to DEBUG.') do
+          @logger.level = Logger::DEBUG
+        end
+
         parser.on_tail('--version', 'Show version') do
           $stdout.puts(VERSION)
           exit 0
