@@ -14,7 +14,8 @@ module DumpVcenterFolders
     def initialize(argv = [])
       @options = {user: ENV['VCENTER_USER'],
                   password: ENV['VCENTER_PASSWORD'],
-                  server: ENV['VCENTER_SERVER']}
+                  server: ENV['VCENTER_SERVER'],
+                  excludes: []}
       @logger = Logger.new($stderr)
       @logger.level = Logger::INFO
       @logger.formatter = Logger::Formatter.new
@@ -45,6 +46,13 @@ EOS
         parser.on('-s', '--server SERVER_HOSTNAME', String,
                   'Hostname of the vCenter server.',
                   'Defaults to the value of the VCENTER_SERVER env variable.') {|v| @options[:server] = v }
+
+        parser.on('-W', '--exclude PATTERN', String,
+                  'Globbing pattern for files or directories to exclude from dump.',
+                  'Glob behavior follows the rules of Ruby\'s File.fnmatch with the',
+                  'FNM_PATHNAME and FNM_EXTGLOB flags set. The glob is evaluated',
+                  'against the full path of the directory entry.'
+                  'This flag may be specified multiple times to add multiple patterns.') { |v| @options[:excludes] << v }
 
 
         parser.on_tail('-h', '--help', 'Show help') do
@@ -143,24 +151,27 @@ EOS
         dir = datacenter.find_folder(path)
 
         dir.children.each do |child|
+          child_path = [path, child.name].join('/')
+          next if skip?(child_path)
+
           case child
           when RbVmomi::VIM::VirtualMachine
             config = child.config
 
             # VM destroyed while we were processing it.
             if config.nil?
-              @logger.debug { "VM disappeared while reading configuration: #{[path, child.name].join('/')}" }
+              @logger.debug { "VM disappeared while reading configuration: #{child_path}" }
               next
             end
 
             dir_map[path] << {name: child.name,
                               uuid: config.uuid}
           when RbVmomi::VIM::Folder
-            dir_mapper.call([path, child.name].join('/'),
+            dir_mapper.call(child_path,
                             dir_map,
                             datacenter)
           else
-            @logger.warn("Unknown entry of type #{child.class} in #{path}")
+            @logger.warn("Unknown entry of type #{child.class} at #{child_path}")
             next
           end
         end
@@ -174,6 +185,18 @@ EOS
       $stdout.write(JSON.pretty_generate(dir_map))
     ensure
       vcenter.close unless vcenter.nil?
+    end
+
+    def skip?(path)
+      @options[:excludes].each do |glob|
+        if File.fnmatch?(glob, path, File::FNM_EXTGLOB | File::FNM_PATHNAME)
+          @logger.debug { "Skipping entry #{path} matching exclusion glob: #{glob}" }
+
+          return true
+        end
+      end
+
+      return false
     end
   end
 end

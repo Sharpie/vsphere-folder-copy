@@ -15,7 +15,7 @@ module RestoreVcenterFolders
       @options = {user: ENV['VCENTER_USER'],
                   password: ENV['VCENTER_PASSWORD'],
                   server: ENV['VCENTER_SERVER'],
-                  noop: false}
+                  excludes: []}
       @logger = Logger.new($stderr)
       @logger.level = Logger::INFO
       @logger.formatter = Logger::Formatter.new
@@ -58,6 +58,13 @@ EOS
 
         parser.on('-n', '--[no-]noop',
                   'Print changes that would be made, but make no changes.') {|v| @options[:noop] = v }
+
+        parser.on('-W', '--exclude PATTERN', String,
+                  'Globbing pattern for files or directories to exclude from dump.',
+                  'Glob behavior follows the rules of Ruby\'s File.fnmatch with the',
+                  'FNM_PATHNAME and FNM_EXTGLOB flags set. The glob is evaluated',
+                  'against the full path of the directory entry.'
+                  'This flag may be specified multiple times to add multiple patterns.') { |v| @options[:excludes] << v }
 
 
         parser.on_tail('-h', '--help', 'Show help') do
@@ -151,6 +158,8 @@ EOS
       @logger.info("Updating #{dir_map.count} VM folders...")
 
       dir_map.each do |dir_name, vms|
+        next if skip?(dir_name)
+
         target_dir = dc.find_folder(dir_name)
 
         if target_dir.nil?
@@ -173,13 +182,17 @@ EOS
           end
 
           vm_uuid = vm_info['uuid']
+          vm_path = [dir_name, vm_info['name']].join('/')
+
+          next if skip?(vm_path)
+
           # Directory used doesn't matter, findByUuid has a global search
           # scope.
           vm = root_folder.findByUuid(vm_uuid)
 
           if vm.nil?
             @logger.warn('Could not find %{vm_path} with instance UUID %{vm_uuid}' %
-                  {vm_path: [dir_name, vm_info['name']].join('/'),
+                  {vm_path: vm_path,
                    vm_uuid: vm_uuid})
           elsif (vm.parent == dump_folder)
             if @options[:noop]
@@ -193,6 +206,18 @@ EOS
       end
     ensure
       vcenter.close unless vcenter.nil?
+    end
+
+    def skip?(path)
+      @options[:excludes].each do |glob|
+        if File.fnmatch?(glob, path, File::FNM_EXTGLOB | File::FNM_PATHNAME)
+          @logger.debug { "Skipping entry #{path} matching exclusion glob: #{glob}" }
+
+          return true
+        end
+      end
+
+      return false
     end
   end
 end
