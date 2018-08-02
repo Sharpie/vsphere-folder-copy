@@ -51,7 +51,7 @@ EOS
                   'Globbing pattern for files or directories to exclude from dump.',
                   'Glob behavior follows the rules of Ruby\'s File.fnmatch with the',
                   'FNM_PATHNAME and FNM_EXTGLOB flags set. The glob is evaluated',
-                  'against the full path of the directory entry.'
+                  'against the full path of the directory entry.',
                   'This flag may be specified multiple times to add multiple patterns.') { |v| @options[:excludes] << v }
 
 
