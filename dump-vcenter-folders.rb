@@ -64,6 +64,10 @@ EOS
           @logger.level = Logger::DEBUG
         end
 
+        parser.on_tail('--quiet', 'Set log level to WARN.') do
+          @logger.level = Logger::WARN
+        end
+
         parser.on_tail('--version', 'Show version') do
           $stdout.puts(VERSION)
           exit 0
@@ -122,10 +126,12 @@ EOS
 
       if @options[:datacenter].nil?
         dcs = vcenter.rootFolder.children.select{|c| c.is_a?(RbVmomi::VIM::Datacenter)}
-        $stderr.write("Available datacenters:\n\n\t")
-        $stderr.puts(dcs.map(&:name).join("\n\t"))
 
-        raise ArgumentError, 'A datacenter must be selected with the --datacenter flag'
+        err_msg = 'A datacenter must be selected with the --datacenter flag. ' +
+                  'Available datacenters: ' +
+                  dcs.map(&:name).join(', ')
+
+        raise ArgumentError, err_msg
       end
 
 
