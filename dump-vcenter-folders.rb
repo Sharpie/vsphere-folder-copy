@@ -135,7 +135,8 @@ EOS
       @logger.info("Reading directory structure from #{@options[:datacenter]}...")
 
       dirs_to_copy = if @options[:folders_to_copy].empty?
-                       dc.vmFolder.children.select {|c| c.is_a?(RbVmomi::VIM::Folder)}.map(&:name)
+                       dirs = dc.vmFolder.children.select {|c| c.is_a?(RbVmomi::VIM::Folder)}.map(&:name)
+                       dirs.reject {|d| skip?(d)}
                      else
                        @options[:folders_to_copy]
                      end
