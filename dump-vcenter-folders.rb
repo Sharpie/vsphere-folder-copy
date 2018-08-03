@@ -141,10 +141,9 @@ EOS
       @logger.info("Reading directory structure from #{@options[:datacenter]}...")
 
       dirs_to_copy = if @options[:folders_to_copy].empty?
-                       dirs = dc.vmFolder.children.select {|c| c.is_a?(RbVmomi::VIM::Folder)}.map(&:name)
-                       dirs.reject {|d| skip?(d)}
+                       {nil => dc.vmFolder}
                      else
-                       @options[:folders_to_copy]
+                       @options[:folders_to_copy].map {|f| [f, dc.find_folder(f)]}.to_h
                      end
 
       dir_map = {}
@@ -152,13 +151,15 @@ EOS
         hash[key] = []
       end
 
-      dir_mapper = lambda do |path, dir_map, datacenter|
+      dir_mapper = lambda do |path, dir, dir_map|
+        return if skip?(path) unless path.nil?
+
         @logger.info("Processing folder: #{path}")
 
-        dir = datacenter.find_folder(path)
-
         dir.children.each do |child|
-          child_path = [path, child.name].join('/')
+          # Root directory is assigned a path of `nil` so that leading slashes
+          # are omitted.
+          child_path = [path, child.name].compact.join('/')
           next if skip?(child_path)
 
           case child
@@ -174,9 +175,11 @@ EOS
             dir_map[path] << {name: child.name,
                               uuid: config.uuid}
           when RbVmomi::VIM::Folder
+            dir_map[child_path] ||= [ ]
+
             dir_mapper.call(child_path,
-                            dir_map,
-                            datacenter)
+                            child,
+                            dir_map)
           else
             @logger.warn("Unknown entry of type #{child.class} at #{child_path}")
             next
@@ -184,8 +187,8 @@ EOS
         end
       end
 
-      dirs_to_copy.each do |dirname|
-        dir_mapper.call(dirname, dir_map, dc)
+      dirs_to_copy.each do |path, dir|
+        dir_mapper.call(path, dir, dir_map)
       end
 
       @logger.info('Printing directory structure to STDOUT as JSON')

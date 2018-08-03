@@ -173,6 +173,7 @@ EOS
             @logger.info("(noop) Creating: #{dir_name}")
           else
             @logger.info("Creating: #{dir_name}")
+            # traverse! is similar to `mkdir -p`.
             target_dir = root_folder.traverse!(dir_name, RbVmomi::VIM::Folder)
           end
         end
