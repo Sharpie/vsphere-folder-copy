@@ -15,7 +15,9 @@ module RestoreVcenterFolders
       @options = {user: ENV['VCENTER_USER'],
                   password: ENV['VCENTER_PASSWORD'],
                   server: ENV['VCENTER_SERVER'],
-                  excludes: []}
+                  excludes: [],
+                  exclude_vms: [],
+                  exclude_dirs: []}
       @logger = Logger.new($stderr)
       @logger.level = Logger::INFO
       @logger.formatter = Logger::Formatter.new
@@ -64,7 +66,13 @@ EOS
                   'Glob behavior follows the rules of Ruby\'s File.fnmatch with the',
                   'FNM_PATHNAME and FNM_EXTGLOB flags set. The glob is evaluated',
                   'against the full path of the directory entry.',
-                  'This flag may be specified multiple times to add multiple patterns.') { |v| @options[:excludes] << v }
+                  'This flag may be specified multiple times to add multiple patterns.') {|v| @options[:excludes] << v }
+
+        parser.on('--exclude-vm PATTERN', String,
+                  'Globbing pattern for VMs to exclude from dump.') {|v| @options[:exclude_vms] << v }
+
+        parser.on('--exclude-dir PATTERN', String,
+                  'Globbing pattern for VM folders to exclude from dump.') {|v| @options[:exclude_dirs] << v }
 
 
         parser.on_tail('-h', '--help', 'Show help') do
@@ -164,7 +172,7 @@ EOS
       @logger.info("Updating #{dir_map.count} VM folders...")
 
       dir_map.each do |dir_name, vms|
-        next if skip?(dir_name)
+        next if skip?(dir_name, @options[:excludes] + @options[:exclude_dirs])
 
         target_dir = dc.find_folder(dir_name)
 
@@ -191,7 +199,7 @@ EOS
           vm_uuid = vm_info['uuid']
           vm_path = [dir_name, vm_info['name']].join('/')
 
-          next if skip?(vm_path)
+          next if skip?(vm_path, @options[:excludes] + @options[:exclude_vms])
 
           # Directory used doesn't matter, findByUuid has a global search
           # scope.
@@ -215,8 +223,8 @@ EOS
       vcenter.close unless vcenter.nil?
     end
 
-    def skip?(path)
-      @options[:excludes].each do |glob|
+    def skip?(path, exclude_patterns)
+      exclude_patterns.each do |glob|
         if File.fnmatch?(glob, path, File::FNM_EXTGLOB | File::FNM_PATHNAME)
           @logger.debug { "Skipping entry #{path} matching exclusion glob: #{glob}" }
 

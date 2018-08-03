@@ -15,7 +15,9 @@ module DumpVcenterFolders
       @options = {user: ENV['VCENTER_USER'],
                   password: ENV['VCENTER_PASSWORD'],
                   server: ENV['VCENTER_SERVER'],
-                  excludes: []}
+                  excludes: [],
+                  exclude_vms: [],
+                  exclude_dirs: []}
       @logger = Logger.new($stderr)
       @logger.level = Logger::INFO
       @logger.formatter = Logger::Formatter.new
@@ -52,7 +54,13 @@ EOS
                   'Glob behavior follows the rules of Ruby\'s File.fnmatch with the',
                   'FNM_PATHNAME and FNM_EXTGLOB flags set. The glob is evaluated',
                   'against the full path of the directory entry.',
-                  'This flag may be specified multiple times to add multiple patterns.') { |v| @options[:excludes] << v }
+                  'This flag may be specified multiple times to add multiple patterns.') {|v| @options[:excludes] << v }
+
+        parser.on('--exclude-vm PATTERN', String,
+                  'Globbing pattern for VMs to exclude from dump.') {|v| @options[:exclude_vms] << v }
+
+        parser.on('--exclude-dir PATTERN', String,
+                  'Globbing pattern for VM folders to exclude from dump.') {|v| @options[:exclude_dirs] << v }
 
 
         parser.on_tail('-h', '--help', 'Show help') do
@@ -140,7 +148,10 @@ EOS
 
       @logger.info("Reading directory structure from #{@options[:datacenter]}...")
 
+      # Hash of path => Folder object
       dirs_to_copy = if @options[:folders_to_copy].empty?
+                       # Path set to nil in order to eliminate leading slashes
+                       # in the output, which simplifies exclusion globs.
                        {nil => dc.vmFolder}
                      else
                        @options[:folders_to_copy].map {|f| [f, dc.find_folder(f)]}.to_h
@@ -152,7 +163,7 @@ EOS
       end
 
       dir_mapper = lambda do |path, dir, dir_map|
-        return if skip?(path) unless path.nil?
+        return if skip?(path, @options[:excludes] + @options[:exclude_dirs]) unless path.nil?
 
         @logger.info("Processing folder: #{path}")
 
@@ -160,10 +171,10 @@ EOS
           # Root directory is assigned a path of `nil` so that leading slashes
           # are omitted.
           child_path = [path, child.name].compact.join('/')
-          next if skip?(child_path)
 
           case child
           when RbVmomi::VIM::VirtualMachine
+            next if skip?(child_path, @options[:excludes] + @options[:exclude_vms])
             config = child.config
 
             # VM destroyed while we were processing it.
@@ -175,6 +186,7 @@ EOS
             dir_map[path] << {name: child.name,
                               uuid: config.uuid}
           when RbVmomi::VIM::Folder
+            next if skip?(child_path, @options[:excludes] + @options[:exclude_dirs])
             dir_map[child_path] ||= [ ]
 
             dir_mapper.call(child_path,
@@ -197,8 +209,8 @@ EOS
       vcenter.close unless vcenter.nil?
     end
 
-    def skip?(path)
-      @options[:excludes].each do |glob|
+    def skip?(path, exclude_patterns)
+      exclude_patterns.each do |glob|
         if File.fnmatch?(glob, path, File::FNM_EXTGLOB | File::FNM_PATHNAME)
           @logger.debug { "Skipping entry #{path} matching exclusion glob: #{glob}" }
 
